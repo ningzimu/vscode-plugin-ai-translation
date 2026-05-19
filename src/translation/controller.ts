@@ -2,6 +2,10 @@ import OpenAI from 'openai';
 import * as vscode from 'vscode';
 import { TranslationConfig, TranslationChunk } from '../types';
 
+type OpenAICompatibleChatRequest = OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming & {
+    reasoning_split?: boolean;
+};
+
 export class TranslationController {
     private abortController: AbortController;
     private webview: vscode.Webview | null;
@@ -74,14 +78,17 @@ export class TranslationController {
         const prompt = this.config.systemPrompt.replace('{targetLanguage}', targetLanguage);
 
         try {
-            const stream = await this.client.chat.completions.create({
+            const request: OpenAICompatibleChatRequest = {
                 model: this.config.model,
                 messages: [
                     { role: 'system', content: prompt },
                     { role: 'user', content: content },
                 ],
                 stream: true,
-            });
+                reasoning_split: true,
+            };
+
+            const stream = await this.client.chat.completions.create(request);
 
             // 发送状态：开始翻译
             this.sendToWebview({ type: 'status', status: 'translating' });
