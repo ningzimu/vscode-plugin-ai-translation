@@ -427,6 +427,10 @@ function getWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Webview): stri
             padding: 0;
             background: none;
         }
+        [data-streamdown="code-block-body"] code > span:last-child:empty,
+        [data-streamdown="code-block-body"] code > span:last-child:has(> span:only-child:empty) {
+            display: none;
+        }
 
         /* 引用块样式 */
         blockquote {
