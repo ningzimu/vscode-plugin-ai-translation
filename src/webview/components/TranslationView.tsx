@@ -96,10 +96,18 @@ export const TranslationView: React.FC<TranslationViewProps> = ({ vscode }) => {
         vscode.postMessage({ type: 'openSettings' });
     };
 
+    const handleRefresh = () => {
+        vscode.postMessage({ type: 'refresh' });
+    };
+
     const handleClear = () => {
+        vscode.postMessage({ type: 'clear' });
         setContent('');
         setError(null);
         setIsStreaming(false);
+        setIsInitializing(false);
+        setCurrentStatus('');
+        setProgress({ status: '', loaded: 0, total: 0 });
     };
 
     const formatBytes = (bytes: number): string => {
@@ -157,6 +165,9 @@ export const TranslationView: React.FC<TranslationViewProps> = ({ vscode }) => {
                 </button>
                 <button onClick={handleOpenSettings} style={styles.button}>
                     ⚙️ 设置
+                </button>
+                <button onClick={handleRefresh} style={styles.button}>
+                    🔄 刷新
                 </button>
                 <button onClick={handleClear} style={styles.button}>
                     🗑️ 清空

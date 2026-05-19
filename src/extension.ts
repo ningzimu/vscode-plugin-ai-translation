@@ -5,6 +5,10 @@ import { TranslationCache } from './translation/cache';
 import { generateHash } from './utils/hash';
 import { TranslationController } from './translation/controller';
 
+interface TranslateOptions {
+    skipCache?: boolean;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('AI Translation Extension is now active!');
 
@@ -16,6 +20,22 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 跟踪当前翻译服务，避免重复翻译
     let currentTranslationService: TranslationController | null = null;
+    let currentCacheKey: string | null = null;
+    let translationGeneration = 0;
+
+    function abortCurrentTranslation() {
+        if (currentTranslationService) {
+            currentTranslationService.abort();
+            currentTranslationService = null;
+        }
+    }
+
+    function deleteCurrentPreviewCache() {
+        if (currentCacheKey) {
+            translationCache.delete(currentCacheKey);
+            currentCacheKey = null;
+        }
+    }
 
     /**
      * 创建或显示预览面板
@@ -73,6 +93,17 @@ export function activate(context: vscode.ExtensionContext) {
                     case 'retry':
                         await vscode.commands.executeCommand('aiTranslation.openPreview');
                         break;
+                    case 'refresh':
+                        translationGeneration++;
+                        abortCurrentTranslation();
+                        deleteCurrentPreviewCache();
+                        await translateDocument(document, { skipCache: true });
+                        break;
+                    case 'clear':
+                        translationGeneration++;
+                        abortCurrentTranslation();
+                        deleteCurrentPreviewCache();
+                        break;
                     case 'openSettings':
                         vscode.commands.executeCommand('workbench.action.openSettings', 'aiTranslation');
                         break;
@@ -109,13 +140,14 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             previewPanel = undefined;
+            currentCacheKey = null;
         });
     }
 
     /**
      * 翻译文档
      */
-    async function translateDocument(document: vscode.TextDocument) {
+    async function translateDocument(document: vscode.TextDocument, options: TranslateOptions = {}) {
         if (!previewPanel) {
             console.log('No preview panel available');
             return;
@@ -153,6 +185,7 @@ export function activate(context: vscode.ExtensionContext) {
         const fileHash = generateHash(content);
         // Use hash-based cache key to prevent cache key collision/poisoning
         const cacheKey = generateHash(`${fileUri}\0${targetLanguage}\0${fileHash}`);
+        currentCacheKey = cacheKey;
 
         console.log('Translating document:', {
             uri: fileUri,
@@ -161,7 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
         });
 
         // 检查缓存
-        const cached = translationCache.get(cacheKey);
+        const cached = options.skipCache ? undefined : translationCache.get(cacheKey);
         if (cached) {
             console.log('Using cached translation');
             previewPanel.webview.postMessage({
@@ -192,12 +225,17 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         let translatedContent = '';
+        const generation = ++translationGeneration;
 
         try {
             previewPanel.webview.postMessage({ type: 'start' });
 
             // 5. 开始流式翻译
             for await (const chunk of currentTranslationService.translate(content, targetLanguage)) {
+                if (generation !== translationGeneration) {
+                    return;
+                }
+
                 if (chunk.done) {
                     console.log('Translation complete');
                     previewPanel.webview.postMessage({ type: 'complete' });

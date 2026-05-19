@@ -12,6 +12,7 @@ describe('extension preview behavior', () => {
     let commands: CommandMap;
     let webviewMessageHandler: ((message: any) => void | Promise<void>) | undefined;
     let postMessage: jest.Mock;
+    let abortMock: jest.Mock;
     let translateMock: jest.Mock;
 
     const markdownUri = {
@@ -48,6 +49,7 @@ describe('extension preview behavior', () => {
         commands = {};
         webviewMessageHandler = undefined;
         postMessage = jest.fn();
+        abortMock = jest.fn();
         translateMock = jest.fn(async function* (source: string) {
             yield { content: `translated:${source}`, done: false };
             yield { content: '', done: true };
@@ -96,7 +98,7 @@ describe('extension preview behavior', () => {
 
         MockedTranslationController.mockClear();
         MockedTranslationController.mockImplementation(() => ({
-            abort: jest.fn(),
+            abort: abortMock,
             hasStartedStreaming: jest.fn(() => false),
             shouldCompleteInBackground: jest.fn(() => false),
             setWebview: jest.fn(),
@@ -109,6 +111,11 @@ describe('extension preview behavior', () => {
         return commands['aiTranslation.openPreview'](resource);
     }
 
+    function openPreview() {
+        activate(context);
+        return commands['aiTranslation.openPreview']();
+    }
+
     test('opening preview from a markdown resource binds that document instead of the active editor', async () => {
         (vscode.window as any).activeTextEditor = {
             document: markdownDocument,
@@ -119,5 +126,23 @@ describe('extension preview behavior', () => {
 
         expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(secondMarkdownUri);
         expect(translateMock.mock.calls[0][0]).toBe('# Second');
+    });
+
+    test('refresh translates the bound markdown document immediately and ignores cache', async () => {
+        await openPreview();
+        await webviewMessageHandler?.({ type: 'refresh' });
+
+        expect(MockedTranslationController).toHaveBeenCalledTimes(1);
+        expect(translateMock.mock.calls[0][0]).toBe('# Current');
+    });
+
+    test('clear aborts active translation without starting another translation', async () => {
+        await openPreview();
+        await webviewMessageHandler?.({ type: 'refresh' });
+
+        await webviewMessageHandler?.({ type: 'clear' });
+
+        expect(abortMock).toHaveBeenCalledTimes(1);
+        expect(MockedTranslationController).toHaveBeenCalledTimes(1);
     });
 });
