@@ -20,14 +20,17 @@ export function activate(context: vscode.ExtensionContext) {
     /**
      * 创建或显示预览面板
      */
-    async function showPreview() {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
+    async function showPreview(resourceUri?: vscode.Uri) {
+        const document = resourceUri
+            ? await vscode.workspace.openTextDocument(resourceUri)
+            : vscode.window.activeTextEditor?.document;
+
+        if (!document) {
             vscode.window.showWarningMessage('未找到活动的 Markdown 文件');
             return;
         }
 
-        if (editor.document.languageId !== 'markdown') {
+        if (document.languageId !== 'markdown') {
             vscode.window.showWarningMessage('请打开一个 Markdown 文件');
             return;
         }
@@ -38,7 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         // 创建新的预览面板
-        previewPanel = vscode.window.createWebviewPanel(
+        const panel = vscode.window.createWebviewPanel(
             'aiTranslation.preview', // internal type
             'AI Translation Preview',
             vscode.ViewColumn.Two, // 在第二列显示
@@ -50,18 +53,22 @@ export function activate(context: vscode.ExtensionContext) {
                 retainContextWhenHidden: true,
             }
         );
+        previewPanel = panel;
 
         // 加载 HTML
-        previewPanel.webview.html = getWebviewHtml(context.extensionUri, previewPanel.webview);
+        panel.webview.html = getWebviewHtml(context.extensionUri, panel.webview);
 
         // 监听来自 webview 的消息
-        previewPanel.webview.onDidReceiveMessage(
+        panel.webview.onDidReceiveMessage(
             async (message) => {
+                if (previewPanel !== panel) {
+                    return;
+                }
                 console.log('[Extension] Received message from webview:', message);
                 switch (message.type) {
                     case 'ready':
                         // Webview 已准备好，发送初始内容
-                        await translateDocument(editor.document);
+                        await translateDocument(document);
                         break;
                     case 'retry':
                         await vscode.commands.executeCommand('aiTranslation.openPreview');
@@ -74,7 +81,10 @@ export function activate(context: vscode.ExtensionContext) {
         );
 
         // 监听面板关闭事件
-        previewPanel.onDidDispose(() => {
+        panel.onDidDispose(() => {
+            if (previewPanel !== panel) {
+                return;
+            }
             console.log('[Extension] Webview disposed');
 
             if (currentTranslationService) {
@@ -221,9 +231,9 @@ export function activate(context: vscode.ExtensionContext) {
     // 注册打开预览命令
     const openPreviewCommand = vscode.commands.registerCommand(
         'aiTranslation.openPreview',
-        async () => {
+        async (resourceUri?: vscode.Uri) => {
             console.log('=== Opening preview ===');
-            await showPreview();
+            await showPreview(resourceUri);
         }
     );
 
