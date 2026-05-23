@@ -41,16 +41,15 @@ export function activate(context: vscode.ExtensionContext) {
      * 创建或显示预览面板
      */
     async function showPreview(resourceUri?: vscode.Uri) {
-        const document = resourceUri
-            ? await vscode.workspace.openTextDocument(resourceUri)
-            : vscode.window.activeTextEditor?.document;
+        const document = await resolvePreviewDocument(resourceUri);
 
         if (!document) {
+            logPreviewDocumentResolutionFailure(resourceUri);
             vscode.window.showWarningMessage('未找到活动的 Markdown 文件');
             return;
         }
 
-        if (document.languageId !== 'markdown') {
+        if (!isMarkdownFile(document)) {
             vscode.window.showWarningMessage('请打开一个 Markdown 文件');
             return;
         }
@@ -142,6 +141,39 @@ export function activate(context: vscode.ExtensionContext) {
             previewPanel = undefined;
             currentCacheKey = null;
         });
+    }
+
+    async function resolvePreviewDocument(resourceUri?: vscode.Uri): Promise<vscode.TextDocument | undefined> {
+        if (resourceUri) {
+            return vscode.workspace.openTextDocument(resourceUri);
+        }
+
+        const activeDocument = vscode.window.activeTextEditor?.document;
+        if (activeDocument && isMarkdownFile(activeDocument)) {
+            return activeDocument;
+        }
+
+        const visibleMarkdownDocument = vscode.window.visibleTextEditors.find(editor => isMarkdownFile(editor.document))?.document;
+        if (visibleMarkdownDocument) {
+            return visibleMarkdownDocument;
+        }
+
+        const activeTabUri = getActiveTabTextUri();
+        if (activeTabUri && isMarkdownUri(activeTabUri)) {
+            return vscode.workspace.openTextDocument(activeTabUri);
+        }
+
+        return undefined;
+    }
+
+    function getActiveTabTextUri(): vscode.Uri | undefined {
+        const input = (vscode.window.tabGroups?.activeTabGroup?.activeTab?.input ?? undefined) as {
+            uri?: vscode.Uri;
+            modified?: vscode.Uri;
+            original?: vscode.Uri;
+        } | undefined;
+
+        return input?.uri ?? input?.modified ?? input?.original;
     }
 
     /**
@@ -334,6 +366,44 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
     console.log('AI Translation Extension deactivated');
+}
+
+function isMarkdownFile(document: vscode.TextDocument): boolean {
+    return isMarkdownUri(document.uri);
+}
+
+function isMarkdownUri(uri: vscode.Uri): boolean {
+    const fileName = uri.fsPath || uri.path;
+    return fileName.toLowerCase().endsWith('.md');
+}
+
+function logPreviewDocumentResolutionFailure(resourceUri?: vscode.Uri) {
+    const activeDocument = vscode.window.activeTextEditor?.document;
+    const visibleEditors = vscode.window.visibleTextEditors.map(editor => editor.document);
+    const activeTabInput = (vscode.window.tabGroups?.activeTabGroup?.activeTab?.input ?? undefined) as {
+        uri?: vscode.Uri;
+        modified?: vscode.Uri;
+        original?: vscode.Uri;
+    } | undefined;
+    const activeTabUri = activeTabInput?.uri ?? activeTabInput?.modified ?? activeTabInput?.original;
+
+    console.log('[AI Translation] No markdown document found for preview', {
+        resourceUri: formatUriForLog(resourceUri),
+        activeDocument: activeDocument ? formatDocumentForLog(activeDocument) : undefined,
+        visibleDocuments: visibleEditors.map(formatDocumentForLog),
+        activeTabUri: formatUriForLog(activeTabUri),
+    });
+}
+
+function formatDocumentForLog(document: vscode.TextDocument) {
+    return {
+        uri: formatUriForLog(document.uri),
+        languageId: document.languageId,
+    };
+}
+
+function formatUriForLog(uri?: vscode.Uri): string | undefined {
+    return uri ? (uri.fsPath || uri.path || uri.toString()) : undefined;
 }
 
 /**

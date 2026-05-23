@@ -38,6 +38,12 @@ module.exports = {
         withProgress: jest.fn(),
         createWebviewPanel: jest.fn(),
         activeTextEditor: undefined,
+        visibleTextEditors: [],
+        tabGroups: {
+            activeTabGroup: {
+                activeTab: undefined,
+            },
+        },
     },
     ViewColumn: {
         Two: 2,
