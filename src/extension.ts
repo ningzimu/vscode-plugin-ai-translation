@@ -468,6 +468,27 @@ function getWebviewHtml(extensionUri: vscode.Uri, webview: vscode.Webview): stri
         table tr:nth-child(even) {
             background-color: var(--vscode-editor-inactiveSelectionBackground);
         }
+        .frontmatter-table {
+            margin: 0 0 24px;
+            table-layout: fixed;
+        }
+        .frontmatter-table th {
+            width: 112px;
+            min-width: 112px;
+            text-align: left;
+            vertical-align: top;
+            background-color: transparent;
+            font-weight: 600;
+            color: var(--vscode-foreground);
+        }
+        .frontmatter-table td {
+            vertical-align: top;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+        .frontmatter-table tr:nth-child(even) {
+            background-color: var(--vscode-editor-inactiveSelectionBackground);
+        }
 
         /* 任务列表样式 */
         input[type="checkbox"] {

@@ -7,6 +7,16 @@ interface TranslationViewProps {
     vscode: any;
 }
 
+interface FrontmatterRow {
+    key: string;
+    value: string;
+}
+
+interface ParsedMarkdownContent {
+    frontmatterRows: FrontmatterRow[];
+    body: string;
+}
+
 export const TranslationView: React.FC<TranslationViewProps> = ({ vscode }) => {
     console.log('[React] TranslationView component rendering!');
     const [content, setContent] = useState('');
@@ -121,6 +131,8 @@ export const TranslationView: React.FC<TranslationViewProps> = ({ vscode }) => {
         return Math.round((progress.loaded / progress.total) * 100);
     };
 
+    const parsedContent = parseLeadingFrontmatter(content);
+
     return (
         <div style={styles.container}>
             {/* 进度条 */}
@@ -188,14 +200,28 @@ export const TranslationView: React.FC<TranslationViewProps> = ({ vscode }) => {
                 style={styles.content}
             >
                 {content ? (
-                    <Streamdown
-                        isAnimating={isStreaming}
-                        plugins={{ code, cjk, mermaid }}
-                        shikiTheme={['github-light', 'github-dark']}
-                        mermaid={{ config: { theme: 'neutral' } }}
-                    >
-                        {content}
-                    </Streamdown>
+                    <>
+                        {parsedContent.frontmatterRows.length > 0 && (
+                            <table className="frontmatter-table">
+                                <tbody>
+                                    {parsedContent.frontmatterRows.map((row, index) => (
+                                        <tr key={`${row.key}-${index}`}>
+                                            <th>{row.key}</th>
+                                            <td>{row.value}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                        <Streamdown
+                            isAnimating={isStreaming}
+                            plugins={{ code, cjk, mermaid }}
+                            shikiTheme={['github-light', 'github-dark']}
+                            mermaid={{ config: { theme: 'neutral' } }}
+                        >
+                            {parsedContent.body}
+                        </Streamdown>
+                    </>
                 ) : isInitializing ? (
                     <div style={{
                         display: 'flex',
@@ -221,6 +247,61 @@ export const TranslationView: React.FC<TranslationViewProps> = ({ vscode }) => {
         </div>
     );
 };
+
+function parseLeadingFrontmatter(markdown: string): ParsedMarkdownContent {
+    const emptyResult = { frontmatterRows: [], body: markdown };
+
+    if (!markdown.startsWith('---\n') && !markdown.startsWith('---\r\n')) {
+        return emptyResult;
+    }
+
+    const lineEnding = markdown.startsWith('---\r\n') ? '\r\n' : '\n';
+    const lines = markdown.split(/\r?\n/);
+    const closingIndex = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
+
+    if (closingIndex <= 0) {
+        return emptyResult;
+    }
+
+    const yamlLines = lines.slice(1, closingIndex);
+    const rows = parseFrontmatterRows(yamlLines);
+
+    if (rows.length === 0) {
+        return emptyResult;
+    }
+
+    const body = lines.slice(closingIndex + 1).join(lineEnding).replace(/^\r?\n/, '');
+    return {
+        frontmatterRows: rows,
+        body,
+    };
+}
+
+function parseFrontmatterRows(lines: string[]): FrontmatterRow[] {
+    const rows: FrontmatterRow[] = [];
+    let currentRow: FrontmatterRow | undefined;
+
+    for (const line of lines) {
+        const match = line.match(/^([A-Za-z0-9_.-]+):(?:\s*(.*))?$/);
+
+        if (match) {
+            currentRow = {
+                key: match[1],
+                value: match[2] ?? '',
+            };
+            rows.push(currentRow);
+            continue;
+        }
+
+        if (currentRow && line.trim().length > 0) {
+            currentRow.value = currentRow.value
+                ? `${currentRow.value}\n${line.trim()}`
+                : line.trim();
+        }
+    }
+
+    return rows;
+}
 
 // 样式
 const styles = {
