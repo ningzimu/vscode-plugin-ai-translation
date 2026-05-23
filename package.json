@@ -2,7 +2,7 @@
   "name": "vscode-ai-translation",
   "displayName": "AI 翻译插件",
   "description": "使用 AI 翻译 Markdown 文件，支持实时增量渲染",
-  "version": "0.2.0",
+  "version": "0.0.1",
   "publisher": "adullboy",
   "license": "MIT",
   "icon": "resources/icon.png",
