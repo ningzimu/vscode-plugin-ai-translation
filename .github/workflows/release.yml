@@ -1,0 +1,78 @@
+name: Release VSIX
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish VSIX
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run stable unit tests
+        run: npm test -- src/extension.test.ts src/translation/controller.test.ts src/translation/cache.test.ts src/utils/hash.test.ts --runInBand
+
+      - name: Build extension
+        run: npm run vscode:prepublish
+
+      - name: Package VSIX
+        run: npx --yes @vscode/vsce package --out "vscode-ai-translation-${GITHUB_REF_NAME}.vsix"
+
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+
+          tag_name="${GITHUB_REF_NAME}"
+          tag_sha="$(git rev-list -n 1 "${tag_name}")"
+          previous_tag="$(git describe --tags --abbrev=0 "${tag_sha}^" 2>/dev/null || true)"
+
+          {
+            echo "## Changes"
+            echo
+            if [ -n "${previous_tag}" ]; then
+              echo "Changes since \`${previous_tag}\`:"
+              echo
+              git log --pretty=format:'- %s (%h)' "${previous_tag}..${tag_sha}"
+            else
+              echo "Initial release notes from commits included in \`${tag_name}\`:"
+              echo
+              git log --pretty=format:'- %s (%h)' "${tag_sha}"
+            fi
+            echo
+            echo
+            echo "## Install"
+            echo
+            echo "Download the attached VSIX package and install it from VS Code with:"
+            echo
+            echo '```bash'
+            echo "code --install-extension vscode-ai-translation-${tag_name}.vsix"
+            echo '```'
+          } > release-notes.md
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "vscode-ai-translation-${GITHUB_REF_NAME}.vsix" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md
